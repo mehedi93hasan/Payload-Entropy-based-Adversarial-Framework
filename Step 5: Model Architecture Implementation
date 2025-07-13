@@ -1,0 +1,101 @@
+class CNNModel:
+    def __init__(self, input_shape):
+        self.input_shape = input_shape
+        self.model = self._build_model()
+        
+    def _build_model(self):
+        """Build 1D-CNN model as described in the paper"""
+        model = keras.Sequential([
+            layers.Input(shape=self.input_shape),
+            layers.Reshape((self.input_shape[0], 1)),
+            
+            # First Conv1D block
+            layers.Conv1D(filters=64, kernel_size=3, activation='relu', padding='same'),
+            layers.BatchNormalization(),
+            layers.MaxPooling1D(pool_size=2),
+            layers.Dropout(0.3),
+            
+            # Second Conv1D block
+            layers.Conv1D(filters=128, kernel_size=3, activation='relu', padding='same'),
+            layers.BatchNormalization(),
+            layers.MaxPooling1D(pool_size=2),
+            layers.Dropout(0.3),
+            
+            # Third Conv1D block
+            layers.Conv1D(filters=256, kernel_size=3, activation='relu', padding='same'),
+            layers.BatchNormalization(),
+            layers.GlobalMaxPooling1D(),
+            layers.Dropout(0.5),
+            
+            # Dense layers
+            layers.Dense(512, activation='relu'),
+            layers.BatchNormalization(),
+            layers.Dropout(0.5),
+            layers.Dense(256, activation='relu'),
+            layers.Dropout(0.3),
+            layers.Dense(5, activation='softmax')  # 5 attack types
+        ])
+        
+        return model
+    
+    def compile_model(self):
+        """Compile model with optimizer settings from paper"""
+        self.model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=1e-6),
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
+        )
+        
+    def train(self, X_train, y_train, X_val, y_val, epochs=1000, batch_size=32):
+        """Train the model"""
+        history = self.model.fit(
+            X_train, y_train,
+            batch_size=batch_size,
+            epochs=epochs,
+            validation_data=(X_val, y_val),
+            verbose=1,
+            callbacks=[
+                keras.callbacks.EarlyStopping(patience=50, restore_best_weights=True),
+                keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=25)
+            ]
+        )
+        return history
+
+class SDAEModel:
+    def __init__(self, input_shape):
+        self.input_shape = input_shape
+        self.model = self._build_model()
+        
+    def _build_model(self):
+        """Build Stacked Denoising Autoencoder as described in the paper"""
+        # Encoder
+        input_layer = layers.Input(shape=self.input_shape)
+        
+        # First denoising layer
+        noise1 = layers.GaussianNoise(0.1)(input_layer)
+        encoded1 = layers.Dense(256, activation='relu')(noise1)
+        encoded1 = layers.Dropout(0.3)(encoded1)
+        
+        # Second denoising layer
+        noise2 = layers.GaussianNoise(0.1)(encoded1)
+        encoded2 = layers.Dense(128, activation='relu')(noise2)
+        encoded2 = layers.Dropout(0.3)(encoded2)
+        
+        # Third denoising layer
+        noise3 = layers.GaussianNoise(0.1)(encoded2)
+        encoded3 = layers.Dense(64, activation='relu')(noise3)
+        encoded3 = layers.Dropout(0.3)(encoded3)
+        
+        # Classification layer
+        output = layers.Dense(5, activation='softmax')(encoded3)
+        
+        model = keras.Model(input_layer, output)
+        return model
+    
+    def compile_model(self):
+        """Compile SDAE model"""
+        self.model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=1e-4),
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
+        )
