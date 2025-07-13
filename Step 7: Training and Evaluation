@@ -1,0 +1,48 @@
+# Prepare data
+scaler = MinMaxScaler()
+X = scaler.fit_transform(balanced_entropy)
+le = LabelEncoder()
+y = le.fit_transform(balanced_df['Attack_Type'])
+
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+X_train, X_val, y_train, y_val = train_test_split(
+    X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+)
+
+print(f"Training set shape: {X_train.shape}")
+print(f"Validation set shape: {X_val.shape}")
+print(f"Test set shape: {X_test.shape}")
+
+# Train CNN model
+print("Training 1D-CNN model...")
+cnn_model = CNNModel(input_shape=(X_train.shape[1],))
+cnn_model.compile_model()
+
+cnn_history = cnn_model.train(
+    X_train, y_train, X_val, y_val, 
+    epochs=100, batch_size=32  # Reduced epochs for demo
+)
+
+# Evaluate baseline performance
+cnn_baseline_acc = cnn_model.model.evaluate(X_test, y_test, verbose=0)[1]
+print(f"CNN Baseline Accuracy: {cnn_baseline_acc:.4f}")
+
+# Train SDAE model
+print("Training SDAE model...")
+sdae_model = SDAEModel(input_shape=(X_train.shape[1],))
+sdae_model.compile_model()
+
+sdae_history = sdae_model.model.fit(
+    X_train, y_train,
+    batch_size=32,
+    epochs=50,  # Reduced epochs for demo
+    validation_data=(X_val, y_val),
+    verbose=1
+)
+
+sdae_baseline_acc = sdae_model.model.evaluate(X_test, y_test, verbose=0)[1]
+print(f"SDAE Baseline Accuracy: {sdae_baseline_acc:.4f}")
