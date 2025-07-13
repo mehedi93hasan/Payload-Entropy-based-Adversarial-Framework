@@ -1,0 +1,11 @@
+# Upload your CIC-IDS2017 CSV file to Colab
+from google.colab import files
+uploaded = files.upload()
+
+# Load the dataset
+# Replace 'your_file.csv' with the actual filename
+df = pd.read_csv('your_file.csv')
+
+print(f"Dataset shape: {df.shape}")
+print(f"Columns: {df.columns.tolist()}")
+print(f"Label distribution:\n{df['Label'].value_counts()}")
