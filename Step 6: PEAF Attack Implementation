@@ -1,0 +1,150 @@
+class PEAFAttack:
+    def __init__(self, model, entropy_threshold=4.0):
+        self.model = model
+        self.entropy_threshold = entropy_threshold
+        
+    def get_entropy_mask(self, data, num_perturbations):
+        """Generate entropy sensitivity mask"""
+        # Calculate gradients for entropy sensitivity
+        with tf.GradientTape() as tape:
+            tape.watch(data)
+            predictions = self.model(data, training=False)
+            loss = tf.reduce_mean(predictions)
+        
+        gradients = tape.gradient(loss, data)
+        
+        # Find high gradient regions
+        gradient_magnitude = tf.abs(gradients)
+        
+        # Create mask for top gradient positions
+        mask = tf.zeros_like(data)
+        for i in range(num_perturbations):
+            max_idx = tf.argmax(tf.reshape(gradient_magnitude, [-1]))
+            flat_mask = tf.reshape(mask, [-1])
+            flat_mask = tf.tensor_scatter_nd_update(flat_mask, [[max_idx]], [1.0])
+            mask = tf.reshape(flat_mask, tf.shape(data))
+            
+            # Zero out this position for next iteration
+            flat_grad = tf.reshape(gradient_magnitude, [-1])
+            flat_grad = tf.tensor_scatter_nd_update(flat_grad, [[max_idx]], [0.0])
+            gradient_magnitude = tf.reshape(flat_grad, tf.shape(gradient_magnitude))
+            
+        return mask
+    
+    def apply_lem_module(self, sample):
+        """Low Entropy Module - increase entropy for structured traffic"""
+        # Add controlled randomness to low entropy regions
+        noise_factor = 0.1
+        randomness = tf.random.normal(tf.shape(sample), stddev=noise_factor)
+        
+        # Apply randomness only to low-value regions (structured patterns)
+        low_entropy_mask = tf.cast(sample < tf.reduce_mean(sample), tf.float32)
+        enhanced_sample = sample + (randomness * low_entropy_mask)
+        
+        return enhanced_sample
+    
+    def apply_hem_module(self, sample):
+        """High Entropy Module - reduce entropy for high randomness traffic"""
+        # Reduce randomness by applying smoothing
+        smoothing_factor = 0.1
+        
+        # Apply moving average to reduce randomness
+        kernel = tf.ones([3]) / 3.0
+        kernel = tf.reshape(kernel, [3, 1, 1])
+        
+        sample_reshaped = tf.reshape(sample, [1, -1, 1])
+        smoothed = tf.nn.conv1d(sample_reshaped, kernel, stride=1, padding='SAME')
+        smoothed_sample = tf.reshape(smoothed, tf.shape(sample))
+        
+        # Blend original with smoothed version
+        reduced_sample = (1 - smoothing_factor) * sample + smoothing_factor * smoothed_sample
+        
+        return reduced_sample
+    
+    def apply_entropy_perturbation(self, sample, adversarial_delta, mask):
+        """Apply entropy perturbation using mask"""
+        inverse_mask = 1.0 - mask
+        entropy_vector = adversarial_delta * inverse_mask
+        
+        # Modify payload entropy
+        perturbed_sample = sample + entropy_vector
+        
+        return perturbed_sample
+    
+    def generate_adversarial_samples(self, X, y, perturbation_size=1, 
+                                   num_perturbations=1, learning_rate=0.01, 
+                                   iterations=100):
+        """Main PEAF attack algorithm"""
+        X_tensor = tf.convert_to_tensor(X, dtype=tf.float32)
+        y_tensor = tf.convert_to_tensor(y, dtype=tf.int32)
+        
+        # Initialize delta randomly
+        delta = tf.Variable(
+            tf.random.normal(tf.shape(X_tensor), stddev=0.01),
+            trainable=True
+        )
+        
+        optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+        
+        for step in range(iterations):
+            with tf.GradientTape() as tape:
+                total_loss = 0.0
+                
+                for i in range(tf.shape(X_tensor)[0]):
+                    sample = X_tensor[i:i+1]
+                    label = y_tensor[i:i+1]
+                    
+                    # Generate entropy mask
+                    entropy_mask = self.get_entropy_mask(sample, num_perturbations)
+                    
+                    # Apply entropy perturbation
+                    perturbed_sample = self.apply_entropy_perturbation(
+                        sample, delta[i:i+1], entropy_mask
+                    )
+                    
+                    # Determine entropy level and apply appropriate module
+                    sample_entropy = tf.reduce_mean(sample)
+                    
+                    if sample_entropy < self.entropy_threshold:
+                        # Low entropy - apply LEM
+                        perturbed_sample = self.apply_lem_module(perturbed_sample)
+                    else:
+                        # High entropy - apply HEM
+                        perturbed_sample = self.apply_hem_module(perturbed_sample)
+                    
+                    # Calculate loss
+                    predictions = self.model(perturbed_sample, training=False)
+                    sample_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                        labels=label, logits=predictions
+                    )
+                    total_loss += tf.reduce_mean(sample_loss)
+            
+            # Update delta
+            gradients = tape.gradient(total_loss, delta)
+            optimizer.apply_gradients([(gradients, delta)])
+            
+            # Clip delta to maintain entropy legitimacy
+            delta.assign(tf.clip_by_value(delta, -0.5, 0.5))
+            
+            if step % 20 == 0:
+                print(f"Step {step}, Loss: {total_loss:.4f}")
+        
+        # Generate final adversarial samples
+        adversarial_samples = []
+        for i in range(tf.shape(X_tensor)[0]):
+            sample = X_tensor[i:i+1]
+            entropy_mask = self.get_entropy_mask(sample, num_perturbations)
+            
+            perturbed_sample = self.apply_entropy_perturbation(
+                sample, delta[i:i+1], entropy_mask
+            )
+            
+            sample_entropy = tf.reduce_mean(sample)
+            if sample_entropy < self.entropy_threshold:
+                perturbed_sample = self.apply_lem_module(perturbed_sample)
+            else:
+                perturbed_sample = self.apply_hem_module(perturbed_sample)
+            
+            adversarial_samples.append(perturbed_sample.numpy())
+        
+        return np.vstack(adversarial_samples)
