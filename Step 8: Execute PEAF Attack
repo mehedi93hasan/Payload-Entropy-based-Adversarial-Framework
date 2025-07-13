@@ -1,0 +1,45 @@
+# Initialize PEAF attack
+peaf_cnn = PEAFAttack(cnn_model.model)
+peaf_sdae = PEAFAttack(sdae_model.model)
+
+# Generate adversarial samples for different perturbation counts
+perturbation_counts = [1, 3, 5, 7]
+results = {}
+
+print("Generating PEAF adversarial attacks...")
+
+for n_pert in perturbation_counts:
+    print(f"\nTesting with {n_pert} perturbations...")
+    
+    # Generate adversarial samples
+    X_adv_cnn = peaf_cnn.generate_adversarial_samples(
+        X_test, y_test, 
+        num_perturbations=n_pert,
+        iterations=50  # Reduced for demo
+    )
+    
+    X_adv_sdae = peaf_sdae.generate_adversarial_samples(
+        X_test, y_test, 
+        num_perturbations=n_pert,
+        iterations=50  # Reduced for demo
+    )
+    
+    # Evaluate attacked performance
+    cnn_adv_acc = cnn_model.model.evaluate(X_adv_cnn, y_test, verbose=0)[1]
+    sdae_adv_acc = sdae_model.model.evaluate(X_adv_sdae, y_test, verbose=0)[1]
+    
+    # Calculate accuracy reduction
+    cnn_reduction = ((cnn_baseline_acc - cnn_adv_acc) / cnn_baseline_acc) * 100
+    sdae_reduction = ((sdae_baseline_acc - sdae_adv_acc) / sdae_baseline_acc) * 100
+    
+    results[n_pert] = {
+        'cnn_baseline': cnn_baseline_acc,
+        'cnn_adversarial': cnn_adv_acc,
+        'cnn_reduction': cnn_reduction,
+        'sdae_baseline': sdae_baseline_acc,
+        'sdae_adversarial': sdae_adv_acc,
+        'sdae_reduction': sdae_reduction
+    }
+    
+    print(f"CNN: {cnn_baseline_acc:.4f} → {cnn_adv_acc:.4f} ({cnn_reduction:.2f}% reduction)")
+    print(f"SDAE: {sdae_baseline_acc:.4f} → {sdae_adv_acc:.4f} ({sdae_reduction:.2f}% reduction)")
