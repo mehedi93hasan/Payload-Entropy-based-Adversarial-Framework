@@ -1,0 +1,70 @@
+# Plot results
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+
+# CNN Performance
+perturbations = list(results.keys())
+cnn_baseline_accs = [results[p]['cnn_baseline'] for p in perturbations]
+cnn_adv_accs = [results[p]['cnn_adversarial'] for p in perturbations]
+
+ax1.plot(perturbations, cnn_baseline_accs, 'b-o', label='Baseline', linewidth=2)
+ax1.plot(perturbations, cnn_adv_accs, 'r-o', label='After PEAF Attack', linewidth=2)
+ax1.set_xlabel('Number of Perturbations')
+ax1.set_ylabel('Accuracy')
+ax1.set_title('CNN Model Performance')
+ax1.legend()
+ax1.grid(True, alpha=0.3)
+
+# SDAE Performance
+sdae_baseline_accs = [results[p]['sdae_baseline'] for p in perturbations]
+sdae_adv_accs = [results[p]['sdae_adversarial'] for p in perturbations]
+
+ax2.plot(perturbations, sdae_baseline_accs, 'b-o', label='Baseline', linewidth=2)
+ax2.plot(perturbations, sdae_adv_accs, 'r-o', label='After PEAF Attack', linewidth=2)
+ax2.set_xlabel('Number of Perturbations')
+ax2.set_ylabel('Accuracy')
+ax2.set_title('SDAE Model Performance')
+ax2.legend()
+ax2.grid(True, alpha=0.3)
+
+# Accuracy Reduction Comparison
+cnn_reductions = [results[p]['cnn_reduction'] for p in perturbations]
+sdae_reductions = [results[p]['sdae_reduction'] for p in perturbations]
+
+x = np.arange(len(perturbations))
+width = 0.35
+
+ax3.bar(x - width/2, cnn_reductions, width, label='CNN', alpha=0.8)
+ax3.bar(x + width/2, sdae_reductions, width, label='SDAE', alpha=0.8)
+ax3.set_xlabel('Number of Perturbations')
+ax3.set_ylabel('Accuracy Reduction (%)')
+ax3.set_title('PEAF Attack Effectiveness')
+ax3.set_xticks(x)
+ax3.set_xticklabels(perturbations)
+ax3.legend()
+ax3.grid(True, alpha=0.3)
+
+# Traffic-specific analysis (if available)
+attack_types = le.classes_
+type_counts = [np.sum(y_test == i) for i in range(len(attack_types))]
+
+ax4.bar(attack_types, type_counts, alpha=0.8)
+ax4.set_xlabel('Attack Type')
+ax4.set_ylabel('Number of Samples')
+ax4.set_title('Test Set Distribution')
+ax4.tick_params(axis='x', rotation=45)
+ax4.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+# Print summary table
+print("\n" + "="*80)
+print("PEAF ATTACK RESULTS SUMMARY")
+print("="*80)
+print(f"{'Perturbations':<12} {'CNN Reduction':<15} {'SDAE Reduction':<15}")
+print("-"*45)
+for n_pert in perturbation_counts:
+    cnn_red = results[n_pert]['cnn_reduction']
+    sdae_red = results[n_pert]['sdae_reduction']
+    print(f"{n_pert:<12} {cnn_red:<15.2f}% {sdae_red:<15.2f}%")
+print("="*80)
