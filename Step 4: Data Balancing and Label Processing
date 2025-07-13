@@ -1,0 +1,61 @@
+# Map labels according to the paper's categorization
+label_mapping = {
+    'BENIGN': 'Benign',
+    'Bot': 'Botnet',
+    'FTP-Patator': 'Brute Force',
+    'SSH-Patator': 'Brute Force',
+    'DoS slowloris': 'DDoS',
+    'DoS Slowhttptest': 'DDoS',
+    'DoS Hulk': 'DDoS',
+    'DoS GoldenEye': 'DDoS',
+    'DDoS': 'DDoS',
+    'PortScan': 'PortScan',
+    'Web Attack � Brute Force': 'Web Attack',
+    'Web Attack � XSS': 'Web Attack',
+    'Web Attack � Sql Injection': 'Web Attack'
+}
+
+# Apply label mapping
+df['Attack_Type'] = df['Label'].map(label_mapping)
+df['Attack_Type'] = df['Attack_Type'].fillna('Other')
+
+# Filter for the attack types mentioned in the paper
+target_attacks = ['Botnet', 'Brute Force', 'PortScan', 'Web Attack', 'DDoS']
+attack_data = df[df['Attack_Type'].isin(target_attacks)].copy()
+
+# Balance dataset according to paper specifications
+def balance_dataset(df, entropy_features):
+    balanced_dfs = []
+    
+    # Target samples per class (as mentioned in paper)
+    target_samples = {
+        'DDoS': 1500,
+        'PortScan': 1500,
+        'Botnet': 1178,
+        'Web Attack': 1105,
+        'Brute Force': 917
+    }
+    
+    for attack_type in target_attacks:
+        attack_subset = df[df['Attack_Type'] == attack_type]
+        entropy_subset = entropy_features.loc[attack_subset.index]
+        
+        if len(attack_subset) > target_samples[attack_type]:
+            # Subsample
+            sampled_indices = attack_subset.sample(n=target_samples[attack_type], random_state=42).index
+        else:
+            # Use all available samples
+            sampled_indices = attack_subset.index
+            
+        balanced_dfs.append((attack_subset.loc[sampled_indices], entropy_subset.loc[sampled_indices]))
+    
+    return balanced_dfs
+
+balanced_data = balance_dataset(attack_data, entropy_features.loc[attack_data.index])
+
+# Combine balanced data
+balanced_df = pd.concat([data[0] for data in balanced_data])
+balanced_entropy = pd.concat([data[1] for data in balanced_data])
+
+print("Balanced dataset:")
+print(balanced_df['Attack_Type'].value_counts())
