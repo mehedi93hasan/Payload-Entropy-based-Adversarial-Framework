@@ -1,0 +1,76 @@
+class EntropyFeatureExtractor:
+    def __init__(self):
+        self.scaler = MinMaxScaler()
+        
+    def calculate_shannon_entropy(self, data):
+        """Calculate Shannon entropy for a data series"""
+        if len(data) == 0:
+            return 0
+        
+        # Convert to string and count character frequencies
+        data_str = str(data)
+        char_counts = {}
+        for char in data_str:
+            char_counts[char] = char_counts.get(char, 0) + 1
+        
+        # Calculate probabilities
+        total_chars = len(data_str)
+        entropy = 0
+        for count in char_counts.values():
+            p = count / total_chars
+            if p > 0:
+                entropy -= p * np.log2(p)
+        
+        return entropy
+    
+    def extract_entropy_features(self, df):
+        """Extract entropy-based features from the dataset"""
+        entropy_features = pd.DataFrame()
+        
+        # Payload Entropy (simulated from packet-level features)
+        entropy_features['PayloadEntropy'] = df.apply(
+            lambda row: self.calculate_shannon_entropy(
+                str(row['Flow Bytes/s']) + str(row['Flow Packets/s'])
+            ), axis=1
+        )
+        
+        # Size Entropy
+        entropy_features['SizeEntropy'] = df.apply(
+            lambda row: self.calculate_shannon_entropy(
+                str(row['Total Length of Fwd Packets']) + str(row['Total Length of Bwd Packets'])
+            ), axis=1
+        )
+        
+        # Header Complexity (based on packet size variations)
+        entropy_features['HeaderComplexity'] = df.apply(
+            lambda row: self.calculate_shannon_entropy(
+                str(row['Fwd Packet Length Max']) + str(row['Fwd Packet Length Min'])
+            ), axis=1
+        )
+        
+        # Compression Ratio (simulated)
+        entropy_features['CompressionRatio'] = df['Flow Bytes/s'] / (df['Flow Packets/s'] + 1)
+        
+        # Randomness Index
+        entropy_features['RandomnessIndex'] = df.apply(
+            lambda row: self.calculate_shannon_entropy(
+                str(row['Flow IAT Mean']) + str(row['Flow IAT Std'])
+            ), axis=1
+        )
+        
+        # Information Density
+        entropy_features['InformationDensity'] = df.apply(
+            lambda row: self.calculate_shannon_entropy(
+                str(row['Fwd IAT Mean']) + str(row['Bwd IAT Mean'])
+            ), axis=1
+        )
+        
+        return entropy_features
+
+# Extract entropy features
+feature_extractor = EntropyFeatureExtractor()
+entropy_features = feature_extractor.extract_entropy_features(df)
+
+print("Entropy features extracted:")
+print(entropy_features.head())
+print(f"Entropy features shape: {entropy_features.shape}")
